@@ -19,7 +19,8 @@ import os
 import shutil
 import subprocess
 import tempfile
-import uuid
+
+# import uuid
 from contextlib import contextmanager
 from distutils.spawn import find_executable
 
@@ -28,6 +29,7 @@ import pytest
 
 from .... import numpy as xnp
 from .. import new_cluster
+from ..config import HostPathVolumeConfig
 
 try:
     from kubernetes import client as k8s_client
@@ -42,6 +44,7 @@ XORBITS_ROOT = os.path.dirname(
 )
 TEST_ROOT = os.path.dirname(os.path.abspath(__file__))
 DOCKER_ROOT = os.path.join((os.path.dirname(os.path.dirname(TEST_ROOT))), "docker")
+TEST_DOCKER_ROOT = os.path.join(TEST_ROOT, "docker")
 
 kube_available = (
     find_executable("kubectl") is not None
@@ -81,29 +84,37 @@ def _collect_coverage():
 
 
 def _build_docker_images():
-    image_name = "xorbits-test-image:" + uuid.uuid1().hex
-    docker_file_path = os.path.join(DOCKER_ROOT, "Dockerfile").removeprefix(
-        XORBITS_ROOT + "/"
+    # image_name = "xorbits-test-image:" + uuid.uuid1().hex
+    image_name = "test_xorbits:test"
+    # docker_file_path = os.path.join(DOCKER_ROOT, "Dockerfile").removeprefix(
+    #     XORBITS_ROOT + "/"
+    # )
+    # try:
+    #     build_proc = subprocess.Popen(
+    #         [
+    #             "docker",
+    #             "build",
+    #             "-f",
+    #             docker_file_path,
+    #             "-t",
+    #             image_name,
+    #             ".",
+    #         ],
+    #         cwd=XORBITS_ROOT,
+    #     )
+    #     if build_proc.wait() != 0:
+    #         raise SystemError("Executing docker build failed.")
+    # except:  # noqa: E722
+    #     # _remove_docker_image(image_name)
+    #     raise
+
+    img_name = "test_xorbits:test2"
+    build_proc2 = subprocess.Popen(
+        ["docker", "build", "-t", img_name, "."], cwd=TEST_DOCKER_ROOT
     )
-    try:
-        build_proc = subprocess.Popen(
-            [
-                "docker",
-                "build",
-                "-f",
-                docker_file_path,
-                "-t",
-                image_name,
-                ".",
-            ],
-            cwd=XORBITS_ROOT,
-        )
-        if build_proc.wait() != 0:
-            raise SystemError("Executing docker build failed.")
-    except:  # noqa: E722
-        _remove_docker_image(image_name)
-        raise
-    return image_name
+    build_proc2.wait()
+
+    return image_name, img_name
 
 
 def _remove_docker_image(image_name, raises=True):
@@ -136,17 +147,22 @@ def _load_docker_env():
 @contextmanager
 def _start_kube_cluster(**kwargs):
     _load_docker_env()
-    image_name = _build_docker_images()
+    n1, image_name = _build_docker_images()
 
     temp_spill_dir = tempfile.mkdtemp(prefix="test-xorbits-k8s-")
     api_client = k8s_config.new_client_from_config()
     kube_api = k8s_client.CoreV1Api(api_client)
+
+    extra_volumes = [
+        HostPathVolumeConfig("xorbits-src-path", "/mnt/data", "/tmp/xorbits")
+    ]
 
     cluster_client = None
     try:
         cluster_client = new_cluster(
             api_client,
             image=image_name,
+            extra_volumes=extra_volumes,
             worker_spill_paths=[temp_spill_dir],
             timeout=600,
             log_when_fail=True,
@@ -177,13 +193,13 @@ def _start_kube_cluster(**kwargs):
         [p.terminate() for p in log_processes]
     finally:
         shutil.rmtree(temp_spill_dir)
-        if cluster_client:
-            try:
-                cluster_client.stop(wait=True, timeout=20)
-            except TimeoutError:
-                pass
-        _collect_coverage()
-        _remove_docker_image(image_name, False)
+        # if cluster_client:
+        #     try:
+        #         cluster_client.stop(wait=True, timeout=20)
+        #     except TimeoutError:
+        #         pass
+        # _collect_coverage()
+        # _remove_docker_image(image_name, False)
 
 
 @pytest.mark.skipif(not kube_available, reason="Cannot run without kubernetes")
