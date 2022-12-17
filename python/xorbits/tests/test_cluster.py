@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import subprocess
 import sys
 import tempfile
@@ -29,6 +30,7 @@ scheduling:
   mem_hard_limit: null"""
 # 100 sec to timeout
 TIMEOUT = 100
+logger = logging.getLogger(__name__)
 
 
 def _terminate(pid: int):
@@ -104,6 +106,7 @@ def test_cluster(dummy_df):
                     if n_worker == 0:
                         raise RuntimeError("Cluster not ready")
                 except:  # noqa: E722  # nosec  # pylint: disable=bare-except
+                    logger.exception("Cluster failed to start")
                     time.sleep(0.5)
                     continue
 
