@@ -34,7 +34,10 @@ logger = logging.getLogger(__name__)
 
 
 def _terminate(pid: int):
-    proc = psutil.Process(pid)
+    try:
+        proc = psutil.Process(pid)
+    except psutil.NoSuchProcess:
+        return
     sub_pids = [p.pid for p in proc.children(recursive=True)]
     proc.terminate()
     proc.wait(5)
