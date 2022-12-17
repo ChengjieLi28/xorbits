@@ -17,6 +17,7 @@ import pytest
 from . import numpy as np
 from . import pandas as pd
 from ._mars.config import option_context
+from ._mars.oscar.backends.router import Router
 from .tests.core import init_test
 
 
@@ -66,8 +67,11 @@ def _setup_test_session():
         timeout=300,
     )
     with option_context({"show_progress": False}):
-        yield sess
-    sess.stop_server()
+        try:
+            yield sess
+        finally:
+            sess.stop_server(isolation=False)
+            Router.set_instance(None)
 
 
 @pytest.fixture

@@ -11,12 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import threading
 
 import pytest
 
 from ... import remote as mr
 from ... import run
+from ...tests.utils import run_test_in_thread
 from ..api import API, _ClientAPI, _MarsContextBasedAPI
 
 
@@ -30,17 +30,14 @@ def test_ctx_api(setup):
     run(mr.spawn(check_api_in_func))
 
 
+@run_test_in_thread
 def test_client_api(setup):
     api = API.create()
     assert isinstance(api, _ClientAPI)
     assert len(api.list_workers()) > 0
 
 
+@run_test_in_thread
 def test_not_inited():
-    def check_api_in_thread():
-        with pytest.raises(ValueError, match="Xorbits is not inited"):
-            API.create()
-
-    t = threading.Thread(target=check_api_in_thread)
-    t.start()
-    t.join()
+    with pytest.raises(ValueError, match="Xorbits is not inited"):
+        API.create()

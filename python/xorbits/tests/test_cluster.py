@@ -28,7 +28,7 @@ CONFIG_CONTENT = b"""\
 scheduling:
   mem_hard_limit: null"""
 # 100 sec to timeout
-TIMEOUT = 1000
+TIMEOUT = 100
 
 
 def _terminate(pid: int):
@@ -99,11 +99,11 @@ def test_cluster(dummy_df):
             while time.time() - start <= TIMEOUT:
                 try:
                     init(web_addr)
+                    api = API.create()
+                    n_worker = len(api.list_workers())
+                    if n_worker == 0:
+                        raise RuntimeError("Cluster not ready")
                 except:  # noqa: E722  # nosec  # pylint: disable=bare-except
-                    time.sleep(0.5)
-                    continue
-                api = API.create()
-                if len(api.list_workers()) == 0:
                     time.sleep(0.5)
                     continue
 
