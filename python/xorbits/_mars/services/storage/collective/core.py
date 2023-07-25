@@ -11,12 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import logging
 from typing import List
 
 import xoscar as mo
 from xoscar.collective.core import RankActor, broadcast, new_group
 
 from ....storage import StorageLevel
+
+logger = logging.getLogger(__name__)
 
 
 class CollectiveActor(mo.StatelessActor):
@@ -58,6 +61,10 @@ class CollectiveActor(mo.StatelessActor):
             )
             buf = reader.buffer
             await broadcast(buf, buf, root=root, group_name=group_name)
+            result = await self._storage_handler_ref.get(session_id, root_data_key)
+            logger.debug(
+                f"In broadcast actor: after broadcast: rank: {r}, data key: {root_data_key}, data: {result}"
+            )
         else:
             await self._storage_handler_ref.request_quota_with_spill(
                 StorageLevel.MEMORY, data_size
@@ -73,3 +80,7 @@ class CollectiveActor(mo.StatelessActor):
             buf = writer.buffer
             await broadcast(None, buf, root=root, group_name=group_name)
             await writer.close()
+            result = await self._storage_handler_ref.get(session_id, root_data_key)
+            logger.debug(
+                f"In broadcast actor: after broadcast: rank: {r}, data key: {root_data_key}, data: {result}"
+            )
