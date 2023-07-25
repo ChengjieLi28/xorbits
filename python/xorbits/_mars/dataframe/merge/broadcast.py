@@ -12,12 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import asyncio
+import logging
 from typing import Dict, List
 
 import xoscar as xo
 
 from ...serialization.serializables import ListField
 from ..operands import DataFrameOperand, DataFrameOperandMixin
+
+logger = logging.getLogger(__name__)
 
 
 class DataFrameBroadcast(DataFrameOperand, DataFrameOperandMixin):
@@ -51,12 +54,17 @@ class DataFrameBroadcast(DataFrameOperand, DataFrameOperandMixin):
 
         # new_group
         ranks = sorted([root_rank] + ranks)
+        logger.debug(f"New group ranks: {ranks}")
         pg_tasks = [root_ref.new_group(ranks)]
         for ref in refs:
             pg_tasks.append(ref.new_group(ranks))
+        logger.debug(f"New group successfully for ranks: {ranks}")
 
         pg_names = await asyncio.gather(*pg_tasks)
         await lock_ref.get_lock(pg_names[0])
+        logger.debug(
+            f"Get lock successfully for ranks: {ranks}, pg_name: {pg_names[0]}"
+        )
 
         tasks = [
             root_ref.broadcast(
@@ -70,7 +78,13 @@ class DataFrameBroadcast(DataFrameOperand, DataFrameOperandMixin):
                 )
             )
         await asyncio.gather(*tasks)
+        logger.debug(
+            f"After execute broadcast for ranks: {ranks}, pg_name: {pg_names[0]}"
+        )
         await lock_ref.release_lock(pg_names[0])
+        logger.debug(
+            f"Release lock successfully for ranks: {ranks}, pg_name: {pg_names[0]}"
+        )
 
     @classmethod
     def execute(cls, ctx, op: "DataFrameBroadcast"):

@@ -60,7 +60,13 @@ class CollectiveActor(mo.StatelessActor):
                 session_id, root_data_key
             )
             buf = reader.buffer
+            logger.debug(
+                f"Open reader successfully rank: {r}, data key: {root_data_key}"
+            )
             await broadcast(buf, buf, root=root, group_name=group_name)
+            logger.debug(
+                f"Broadcast successfully!! rank: {r}, data key: {root_data_key}"
+            )
             result = await self._storage_handler_ref.get(session_id, root_data_key)
             logger.debug(
                 f"In broadcast actor: after broadcast: rank: {r}, data key: {root_data_key}, data: {result}"
@@ -68,6 +74,9 @@ class CollectiveActor(mo.StatelessActor):
         else:
             await self._storage_handler_ref.request_quota_with_spill(
                 StorageLevel.MEMORY, data_size
+            )
+            logger.debug(
+                f"Request quota successfully rank: {r}, data key: {root_data_key}"
             )
             writer = await self._storage_handler_ref.open_writer(
                 session_id,
@@ -77,8 +86,14 @@ class CollectiveActor(mo.StatelessActor):
                 request_quota=False,
                 band_name="numa-0",
             )
+            logger.debug(
+                f"Open writer successfully rank: {r}, data key: {root_data_key}"
+            )
             buf = writer.buffer
             await broadcast(None, buf, root=root, group_name=group_name)
+            logger.debug(
+                f"Broadcast successfully!! rank: {r}, data key: {root_data_key}"
+            )
             await writer.close()
             result = await self._storage_handler_ref.get(session_id, root_data_key)
             logger.debug(
