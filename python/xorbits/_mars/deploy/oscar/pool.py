@@ -19,6 +19,13 @@ import os
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
+import xoscar as xo
+from xoscar.collective import init_process_group
+from xoscar.collective.common import (
+    RENDEZVOUS_MASTER_IP_ENV_KEY,
+    RENDEZVOUS_MASTER_PORT_ENV_KEY,
+)
+
 from ....utils import get_default_logging_config_file_path
 from ...constants import (
     DEFAULT_MARS_LOG_BACKUP_COUNT,
@@ -239,6 +246,8 @@ async def create_worker_actor_pool(
     oscar_config: dict = None,
     **kwargs,
 ):
+    rank = kwargs.pop("rank", None)
+    world_size = kwargs.pop("world_size", None)
     logging_conf = kwargs.get("logging_conf", None)
     if logging_conf is None:
         logging_conf = dict()
@@ -301,13 +310,32 @@ async def create_worker_actor_pool(
     n_process += n_io_process
     # sub-pools for IO(transfer and spill)
     for _ in range(n_io_process):
+        env_dict = {}
+        if rank is not None:
+            env_dict.update(
+                {
+                    RENDEZVOUS_MASTER_IP_ENV_KEY: os.environ.get(
+                        RENDEZVOUS_MASTER_IP_ENV_KEY, "127.0.0.1"
+                    ),
+                    RENDEZVOUS_MASTER_PORT_ENV_KEY: os.environ.get(
+                        RENDEZVOUS_MASTER_PORT_ENV_KEY, "25001"
+                    ),
+                }
+            )
         if envs:  # pragma: no cover
-            envs.append({"CUDA_VISIBLE_DEVICES": "-1"})
+            env_dict.update({"CUDA_VISIBLE_DEVICES": "-1"})
+            envs.append(env_dict)
+        else:
+            if env_dict:
+                n_other_processes = n_process - n_io_process
+                for _ in range(n_other_processes):
+                    envs.append(None)
+                envs.append(env_dict)
         labels.append("io")
         external_address_schemes.append(io_external_address_scheme)
         enable_internal_addresses.append(io_enable_internal_address)
 
-    return await create_actor_pool(
+    pool = await create_actor_pool(
         address,
         n_process=n_process,
         ports=ports,
@@ -321,3 +349,19 @@ async def create_worker_actor_pool(
         extra_conf=extra_conf,
         **kwargs,
     )
+
+    if rank is not None:
+        # start rank actor in io process
+        config = (await xo.get_pool_config(pool.external_address)).as_dict()
+        io_process_address = [
+            v["external_address"][0]
+            for k, v in config["pools"].items()
+            if v["label"] == "io"
+        ][0]
+        print(
+            f"This is rank {rank} of world {world_size}, address: {address}, io_address: {io_process_address}"
+        )
+        await init_process_group(rank, world_size, address=io_process_address)
+        print("init process group done!")
+
+    return pool

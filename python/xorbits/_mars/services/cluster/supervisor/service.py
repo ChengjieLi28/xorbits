@@ -16,6 +16,7 @@
 import xoscar as mo
 
 from ...core import AbstractService, NodeRole
+from ..collective.core import CollectiveLockActor
 from ..file_logger import FileLoggerActor
 from ..procinfo import ProcessInfoManagerActor
 from ..uploader import NodeInfoUploaderActor
@@ -84,6 +85,9 @@ class ClusterSupervisorService(AbstractService):
         await mo.create_actor(
             FileLoggerActor, uid=FileLoggerActor.default_uid(), address=address
         )
+        await mo.create_actor(
+            CollectiveLockActor, uid=CollectiveLockActor.default_uid(), address=address
+        )
 
     async def stop(self):
         address = self._address
@@ -108,4 +112,7 @@ class ClusterSupervisorService(AbstractService):
         )
         await mo.destroy_actor(
             mo.create_actor_ref(uid=FileLoggerActor.default_uid(), address=address)
+        )
+        await mo.destroy_actor(
+            mo.create_actor_ref(uid=CollectiveLockActor.default_uid(), address=address)
         )

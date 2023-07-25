@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from .... import new_session
 from ....core.graph.builder.utils import build_graph
 from ....tests.core import support_cuda
 from ...datasource.dataframe import from_pandas
@@ -919,3 +920,66 @@ def test_concat(setup):
     expected = pd.concat([series1, df2], axis=1)
     result = r.execute().fetch()
     pd.testing.assert_frame_equal(result, expected)
+
+
+def test_collective():
+    sess = new_session(n_worker=2, cuda_devices=None)
+
+    ns = np.random.RandomState(0)
+    # small dataframe
+    raw1 = pd.DataFrame(
+        {
+            "key": ns.randint(0, 10, size=10),
+            "value": np.arange(10),
+        },
+        index=[f"a{i}" for i in range(10)],
+    )
+    # big dataframe
+    raw2 = pd.DataFrame(
+        {
+            "key": ns.randint(0, 100, size=100),
+            "value": np.arange(100, 200),
+        },
+        index=[f"a{i}" for i in range(100)],
+    )
+
+    # test broadcast right and how="inner"
+    df1 = from_pandas(raw1, chunk_size=5)
+    df2 = from_pandas(raw2, chunk_size=10)
+    r = df2.merge(df1, on="key", auto_merge="none", bloom_filter=False)
+
+    result = r.execute().fetch()
+    expected = raw2.merge(raw1, on="key")
+
+    expected = _reset_index_and_sort_values(expected, ["key", "value_x", "value_y"])
+    result = _reset_index_and_sort_values(result, ["key", "value_x", "value_y"])
+    print(expected)
+    pd.testing.assert_frame_equal(expected, result)
+
+    df1 = pd.DataFrame(
+        {"lkey": ["foo", "bar", "baz", "foo"], "value": [1, 2, 3, 5]},
+        index=["a1", "a2", "a3", "a4"],
+    )
+    df2 = pd.DataFrame(
+        {"rkey": ["foo", "bar", "baz", "foo"], "value": [5, 6, 7, 8]},
+        index=["a1", "a2", "a3", "a4"],
+    )
+
+    # left have one chunk
+    mdf1 = from_pandas(df1)
+    mdf2 = from_pandas(df2, chunk_size=2)
+
+    expected = df1.merge(df2, left_on="lkey", right_on="rkey")
+    jdf = mdf1.merge(mdf2, left_on="lkey", right_on="rkey", auto_merge="none")
+    result = jdf.execute().fetch()
+
+    pd.testing.assert_frame_equal(
+        expected.sort_values(by=[expected.columns[1], expected.columns[3]]).reset_index(
+            drop=True
+        ),
+        result.sort_values(by=[result.columns[1], result.columns[3]]).reset_index(
+            drop=True
+        ),
+    )
+
+    sess.stop_server()

@@ -28,6 +28,7 @@ from ...storage import StorageLevel, get_storage_backend
 from ...storage.base import ObjectInfo, StorageBackend
 from ...storage.core import StorageFileObject
 from ...utils import dataslots
+from .collective.core import CollectiveActor
 from .errors import DataNotExist, StorageFull
 
 logger = logging.getLogger(__name__)
@@ -571,6 +572,7 @@ class StorageManagerActor(mo.StatelessActor):
         sender_strategy = IdleLabel("io", "sender")
         receiver_strategy = IdleLabel("io", "receiver")
         handler_strategy = IdleLabel("io", "handler")
+        collective_strategy = IdleLabel("io", "collective")
         while True:
             try:
                 handler_ref = await mo.create_actor(
@@ -584,6 +586,7 @@ class StorageManagerActor(mo.StatelessActor):
                     address=self.address,
                     allocate_strategy=handler_strategy,
                 )
+                rank_ref = await mo.actor_ref(address=self.address, uid="RankActor")
                 await mo.create_actor(
                     SenderManagerActor,
                     data_manager_ref=self._data_manager,
@@ -600,6 +603,14 @@ class StorageManagerActor(mo.StatelessActor):
                     address=self.address,
                     uid=ReceiverManagerActor.gen_uid(default_band_name),
                     allocate_strategy=receiver_strategy,
+                )
+                await mo.create_actor(
+                    CollectiveActor,
+                    rank_ref,
+                    handler_ref,
+                    address=self.address,
+                    uid=CollectiveActor.gen_uid(),
+                    allocate_strategy=collective_strategy,
                 )
             except NoIdleSlot:
                 break
@@ -662,6 +673,7 @@ class StorageManagerActor(mo.StatelessActor):
                         # when atexit is triggered, the default pool might be shutdown
                         # and to_thread will fail
                         break
+                    raise ex
                 await asyncio.sleep(0.5)
 
     async def upload_disk_info(self):

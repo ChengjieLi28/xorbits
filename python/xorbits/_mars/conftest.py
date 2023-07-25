@@ -65,6 +65,8 @@ def _new_test_session(check_router_cleaned):
         init_local=True,
         default=True,
         timeout=300,
+        n_worker=2,
+        cuda_devices=None,
     )
     with option_context({"show_progress": False}):
         try:

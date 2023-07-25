@@ -50,6 +50,7 @@ from ..utils import (
     is_cudf,
     parse_index,
 )
+from .broadcast import DataFrameBroadcast
 
 logger = logging.getLogger(__name__)
 DEFAULT_BLOOM_FILTER_CHUNK_THRESHOLD = 10
@@ -447,10 +448,14 @@ class DataFrameMerge(DataFrameOperand, DataFrameOperandMixin):
             out_chunks = []
             left_chunk = left.chunks[0]
             left_chunk.is_broadcaster = True
+
+            yield [left_chunk] + right.chunks
+            broadcasted_chunks = cls._gen_broadcast_chunks([left_chunk], right.chunks)
+
             for c in right.chunks:
                 merge_op = op.copy().reset_key()
                 out_chunk = merge_op.new_chunk(
-                    [left_chunk, c],
+                    [broadcasted_chunks[0], c],
                     shape=(np.nan, df.shape[1]),
                     index=c.index,
                     index_value=infer_index_value(
@@ -466,10 +471,14 @@ class DataFrameMerge(DataFrameOperand, DataFrameOperandMixin):
             right_chunk = right.chunks[0]
             # set `is_broadcaster` as True
             right_chunk.is_broadcaster = True
+
+            yield [right_chunk] + left.chunks
+            broadcasted_chunks = cls._gen_broadcast_chunks([right_chunk], left.chunks)
+
             for c in left.chunks:
                 merge_op = op.copy().reset_key()
                 out_chunk = merge_op.new_chunk(
-                    [c, right_chunk],
+                    [c, broadcasted_chunks[0]],
                     shape=(np.nan, df.shape[1]),
                     index=c.index,
                     index_value=infer_index_value(
@@ -542,6 +551,21 @@ class DataFrameMerge(DataFrameOperand, DataFrameOperandMixin):
         )
 
     @classmethod
+    def _gen_broadcast_chunks(cls, sources: List, targets: List):
+        result = []
+        for c in sources:
+            broadcast_op = DataFrameBroadcast(
+                output_types=[OutputType.dataframe],
+                target_keys=[c.key for c in targets],
+            )
+            result.append(
+                broadcast_op.new_chunk(
+                    [c], shape=c.shape, index=c.index, columns_value=c.columns_value
+                )
+            )
+        return result
+
+    @classmethod
     def _tile_broadcast(
         cls,
         op: "DataFrameMerge",
@@ -564,11 +588,15 @@ class DataFrameMerge(DataFrameOperand, DataFrameOperandMixin):
             # set is_broadcast property
             for c in left_chunks:
                 c.is_broadcaster = True
+
+            yield left_chunks + right.chunks
+            broadcasted_chunks = cls._gen_broadcast_chunks(left_chunks, right.chunks)
+
             right_chunks = right.chunks
             for right_chunk in right_chunks:
                 merged_chunks = []
                 # concat all merged results
-                for j, left_chunk in enumerate(left_chunks):
+                for j, left_chunk in enumerate(broadcasted_chunks):
                     merge_op = op.copy().reset_key()
                     if need_split:
                         merge_op.split_info = MergeSplitInfo(
@@ -610,11 +638,16 @@ class DataFrameMerge(DataFrameOperand, DataFrameOperandMixin):
             # set is_broadcast property
             for c in right_chunks:
                 c.is_broadcaster = True
+
+            yield left.chunks + right_chunks
+
+            broadcasted_chunks = cls._gen_broadcast_chunks(right_chunks, left.chunks)
+
             left_chunks = left.chunks
             for left_chunk in left_chunks:
                 merged_chunks = []
                 # concat all merged results
-                for j, right_chunk in enumerate(right_chunks):
+                for j, right_chunk in enumerate(broadcasted_chunks):
                     merge_op = op.copy().reset_key()
                     if need_split:
                         merge_op.split_info = MergeSplitInfo(
@@ -751,6 +784,11 @@ class DataFrameMerge(DataFrameOperand, DataFrameOperandMixin):
         left = build_concatenated_rows_frame(op.inputs[0])
         right = build_concatenated_rows_frame(op.inputs[1])
 
+        # yield left.chunks
+        # ctx = get_context()
+        # metas = ctx.get_chunks_meta([c.key for c in left.chunks], fields=["bands"])
+        # print(metas)
+
         ctx = get_context()
         auto_merge_threshold = op.auto_merge_threshold
         auto_merge_before, auto_merge_after = cls._get_auto_merge_options(op.auto_merge)
@@ -811,9 +849,9 @@ class DataFrameMerge(DataFrameOperand, DataFrameOperandMixin):
                 method = cls._choose_merge_method(op, left, right)
         logger.info("Choose %s method for merge operand %s.", method, op)
         if method == MergeMethod.one_chunk:
-            ret = cls._tile_one_chunk(op, left, right)
+            ret = yield from cls._tile_one_chunk(op, left, right)
         elif method == MergeMethod.broadcast:
-            ret = cls._tile_broadcast(op, left, right)
+            ret = yield from cls._tile_broadcast(op, left, right)
         else:
             assert method == MergeMethod.shuffle
             ret = cls._tile_shuffle(op, left, right)

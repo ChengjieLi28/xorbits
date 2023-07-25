@@ -32,6 +32,8 @@ class WorkerCommandRunner(OscarCommandRunner):
         self.band_to_resource = dict()
         self.cuda_devices = []
         self.n_io_process = 1
+        self.rank = None
+        self.world = None
 
     def config_args(self, parser):
         super().config_args(parser)
@@ -46,6 +48,11 @@ class WorkerCommandRunner(OscarCommandRunner):
             "all available devices",
             default="auto",
         )
+        parser.add_argument(
+            "--rank",
+            default=None,
+        )
+        parser.add_argument("--world", default=None)
 
     def parse_args(self, parser, argv, environ=None):
         environ = environ or os.environ
@@ -57,6 +64,8 @@ class WorkerCommandRunner(OscarCommandRunner):
         ):  # pragma: no cover
             raise ValueError("--supervisors is needed to start Mars Worker")
 
+        self.rank = args.rank
+        self.world = args.world
         args.supervisors = self._process_supervisors_addr_scheme(args.supervisors)
 
         if args.endpoint is None:
@@ -108,6 +117,8 @@ class WorkerCommandRunner(OscarCommandRunner):
             subprocess_start_method="forkserver" if os.name != "nt" else "spawn",
             metrics=self.config.get("metrics", {}),
             oscar_config=self.config.get("oscar"),
+            rank=int(self.rank),
+            world_size=int(self.world),
         )
 
     async def start_services(self):

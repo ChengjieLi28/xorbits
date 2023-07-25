@@ -372,22 +372,43 @@ class LocalCluster:
         worker_modules = get_third_party_modules_from_config(
             self._config, NodeRole.WORKER
         )
-        for band_to_resource, worker_devices in zip(
-            self._bands_to_resource, self._cuda_devices
+        world_size = self._n_worker
+        create_worker_actor_pool_tasks = []
+        for i, (band_to_resource, worker_devices) in enumerate(
+            zip(self._bands_to_resource, self._cuda_devices)
         ):
-            worker_pool = await create_worker_actor_pool(
-                self._address,
-                band_to_resource,
-                modules=worker_modules,
-                subprocess_start_method=self._subprocess_start_method,
-                metrics=self._config.get("metrics", {}),
-                cuda_devices=worker_devices,
-                web=self._web,
-                # passing logging conf to config logging when create pools
-                logging_conf=self._log_config,
-                oscar_config=self._config.get("oscar"),
+            create_worker_actor_pool_tasks.append(
+                create_worker_actor_pool(
+                    self._address,
+                    band_to_resource,
+                    modules=worker_modules,
+                    subprocess_start_method=self._subprocess_start_method,
+                    metrics=self._config.get("metrics", {}),
+                    cuda_devices=worker_devices,
+                    web=self._web,
+                    # passing logging conf to config logging when create pools
+                    logging_conf=self._log_config,
+                    oscar_config=self._config.get("oscar"),
+                    rank=i,
+                    world_size=world_size,
+                )
             )
-            self._worker_pools.append(worker_pool)
+            # worker_pool = await create_worker_actor_pool(
+            #     self._address,
+            #     band_to_resource,
+            #     modules=worker_modules,
+            #     subprocess_start_method=self._subprocess_start_method,
+            #     metrics=self._config.get("metrics", {}),
+            #     cuda_devices=worker_devices,
+            #     web=self._web,
+            #     # passing logging conf to config logging when create pools
+            #     logging_conf=self._log_config,
+            #     oscar_config=self._config.get("oscar"),
+            #     rank=i,
+            #     world_size=world_size
+            # )
+        res = await asyncio.gather(*create_worker_actor_pool_tasks)
+        self._worker_pools.extend(res)
 
     async def _start_service(self):
         self._web = await start_supervisor(
