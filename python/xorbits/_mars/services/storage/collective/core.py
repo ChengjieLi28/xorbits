@@ -15,7 +15,7 @@ import logging
 from typing import List
 
 import xoscar as mo
-from xoscar.collective.core import RankActor, new_group
+from xoscar.collective.core import RankActor
 
 from ....storage import StorageLevel
 
@@ -50,7 +50,7 @@ class CollectiveActor(mo.StatelessActor):
         return self._rank
 
     async def new_group(self, ranks: List[int]):
-        return await new_group(ranks)
+        return await self._rank_ref.new_group(ranks)
 
     async def broadcast(
         self,
@@ -59,8 +59,9 @@ class CollectiveActor(mo.StatelessActor):
         data_size: int,
         ranks: List[int],
         root: int = 0,
+        group_name: str = "default",
     ):
-        group_name = await self._rank_ref.new_group(ranks)
+        # group_name = await self._rank_ref.new_group(ranks)
         r = self._rank
         group_root_rank = ranks.index(root)
         if root == r:
@@ -68,11 +69,11 @@ class CollectiveActor(mo.StatelessActor):
                 session_id, root_data_key
             )
             buf = reader.buffer
-            await self._lock_ref.get_lock(group_name)
+            # await self._lock_ref.get_lock(group_name)
             await self._rank_ref.broadcast(
                 buf, buf, root=group_root_rank, pg_name=group_name
             )
-            await self._lock_ref.release_lock(group_name)
+            # await self._lock_ref.release_lock(group_name)
         else:
             await self._storage_handler_ref.request_quota_with_spill(
                 StorageLevel.MEMORY, data_size

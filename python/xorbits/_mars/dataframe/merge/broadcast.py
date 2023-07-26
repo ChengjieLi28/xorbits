@@ -36,10 +36,11 @@ class DataFrameBroadcast(DataFrameOperand, DataFrameOperandMixin):
         data_key: str,
         data_size: int,
         addrs: List[str],
+        supervisor_addr: str,
     ):
-        # lock_ref = await xo.actor_ref(
-        #     address=supervisor_addr, uid="CollectiveLockActor"
-        # )
+        lock_ref = await xo.actor_ref(
+            address=supervisor_addr, uid="CollectiveLockActor"
+        )
         # root_addr = addrs[0]
         # root_ref = await xo.actor_ref(address=root_addr, uid="CollectiveActor")
         # root_rank = await root_ref.rank()
@@ -54,12 +55,12 @@ class DataFrameBroadcast(DataFrameOperand, DataFrameOperandMixin):
         # new_group
         root_rank = ranks[0]
         ranks = sorted(ranks)
-        # pg_tasks = [root_ref.new_group(ranks)]
-        # for ref in refs:
-        #     pg_tasks.append(ref.new_group(ranks))
-        #
-        # pg_names = await asyncio.gather(*pg_tasks)
-        # await lock_ref.get_lock(pg_names[0])
+        pg_tasks = []
+        for ref in refs:
+            pg_tasks.append(ref.new_group(ranks))
+
+        pg_names = await asyncio.gather(*pg_tasks)
+        await lock_ref.get_lock(pg_names[0])
 
         # tasks = [
         #     root_ref.broadcast(
@@ -73,10 +74,12 @@ class DataFrameBroadcast(DataFrameOperand, DataFrameOperandMixin):
         tasks = []
         for ref in refs:
             tasks.append(
-                ref.broadcast(session_id, data_key, data_size, ranks, root_rank)
+                ref.broadcast(
+                    session_id, data_key, data_size, ranks, root_rank, pg_names[0]
+                )
             )
         await asyncio.gather(*tasks)
-        # await lock_ref.release_lock(pg_names[0])
+        await lock_ref.release_lock(pg_names[0])
 
     @classmethod
     def execute(cls, ctx, op: "DataFrameBroadcast"):
@@ -95,12 +98,14 @@ class DataFrameBroadcast(DataFrameOperand, DataFrameOperandMixin):
         if root_addr in other_addrs:
             other_addrs.remove(root_addr)
         if other_addrs:
+            supervisor_addr = ctx.get_supervisor_addresses()[0]
             ctx._call(
                 cls._do_broadcast(
                     session_id,
                     data_key,
                     data_size,
                     [root_addr, *other_addrs],
+                    supervisor_addr,
                 )
             )
             # fut = asyncio.run_coroutine_threadsafe(
