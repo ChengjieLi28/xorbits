@@ -425,6 +425,7 @@ class StorageManagerActor(mo.StatelessActor):
             self._cluster_api = cluster_api = await ClusterAPI.create(self.address)
             band_to_resource = await cluster_api.get_bands()
             self._all_bands = [band[1] for band in band_to_resource]
+            self._supervisor_address = (await cluster_api.get_supervisors())[0]
         except mo.ActorNotExist:
             # in some test cases, cluster service is not available
             self._all_bands = ["numa-0"]
@@ -587,6 +588,9 @@ class StorageManagerActor(mo.StatelessActor):
                     allocate_strategy=handler_strategy,
                 )
                 rank_ref = await mo.actor_ref(address=self.address, uid="RankActor")
+                lock_ref = await mo.actor_ref(
+                    address=self._supervisor_address, uid="CollectiveLockActor"
+                )
                 await mo.create_actor(
                     SenderManagerActor,
                     data_manager_ref=self._data_manager,
@@ -607,6 +611,7 @@ class StorageManagerActor(mo.StatelessActor):
                 await mo.create_actor(
                     CollectiveActor,
                     rank_ref,
+                    lock_ref,
                     handler_ref,
                     address=self.address,
                     uid=CollectiveActor.gen_uid(),

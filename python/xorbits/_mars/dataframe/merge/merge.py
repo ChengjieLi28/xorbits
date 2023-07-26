@@ -447,7 +447,7 @@ class DataFrameMerge(DataFrameOperand, DataFrameOperandMixin):
         elif len(left.chunks) == 1:
             out_chunks = []
             left_chunk = left.chunks[0]
-            left_chunk.is_broadcaster = True
+            # left_chunk.is_broadcaster = True
 
             yield [left_chunk] + right.chunks
             broadcasted_chunks = cls._gen_broadcast_chunks([left_chunk], right.chunks)
@@ -470,7 +470,7 @@ class DataFrameMerge(DataFrameOperand, DataFrameOperandMixin):
             out_chunks = []
             right_chunk = right.chunks[0]
             # set `is_broadcaster` as True
-            right_chunk.is_broadcaster = True
+            # right_chunk.is_broadcaster = True
 
             yield [right_chunk] + left.chunks
             broadcasted_chunks = cls._gen_broadcast_chunks([right_chunk], left.chunks)
@@ -586,8 +586,8 @@ class DataFrameMerge(DataFrameOperand, DataFrameOperandMixin):
                 left_chunks = cls._gen_shuffle_chunks(left.chunk_shape, left_on, left)
                 need_split = True
             # set is_broadcast property
-            for c in left_chunks:
-                c.is_broadcaster = True
+            # for c in left_chunks:
+            #     c.is_broadcaster = True
 
             yield left_chunks + right.chunks
             broadcasted_chunks = cls._gen_broadcast_chunks(left_chunks, right.chunks)
@@ -636,8 +636,8 @@ class DataFrameMerge(DataFrameOperand, DataFrameOperandMixin):
                     right.chunk_shape, right_on, right
                 )
             # set is_broadcast property
-            for c in right_chunks:
-                c.is_broadcaster = True
+            # for c in right_chunks:
+            #     c.is_broadcaster = True
 
             yield left.chunks + right_chunks
 
