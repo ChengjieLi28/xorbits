@@ -67,11 +67,25 @@ class DataFrameBroadcast(DataFrameOperand, DataFrameOperandMixin):
         )
 
         tasks = [
-            root_ref.broadcast(session_id, data_key, data_size, root_rank, pg_names[0])
+            root_ref.broadcast(
+                session_id,
+                data_key,
+                data_size,
+                root_rank,
+                ranks.index(root_rank),
+                pg_names[0],
+            )
         ]
         for ref in refs:
             tasks.append(
-                ref.broadcast(session_id, data_key, data_size, root_rank, pg_names[0])
+                ref.broadcast(
+                    session_id,
+                    data_key,
+                    data_size,
+                    root_rank,
+                    ranks.index(root_rank),
+                    pg_names[0],
+                )
             )
         await asyncio.gather(*tasks)
         logger.debug(

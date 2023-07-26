@@ -52,6 +52,7 @@ class CollectiveActor(mo.StatelessActor):
         root_data_key: str,
         data_size: int,
         root: int = 0,
+        group_root_rank: int = 0,
         group_name: str = "default",
     ):
         r = await self.rank()
@@ -63,7 +64,7 @@ class CollectiveActor(mo.StatelessActor):
             logger.debug(
                 f"Open reader successfully rank: {r}, data key: {root_data_key}"
             )
-            await broadcast(buf, buf, root=root, group_name=group_name)
+            await broadcast(buf, buf, root=group_root_rank, group_name=group_name)
             logger.debug(
                 f"Broadcast successfully!! rank: {r}, data key: {root_data_key}"
             )
@@ -90,7 +91,7 @@ class CollectiveActor(mo.StatelessActor):
                 f"Open writer successfully rank: {r}, data key: {root_data_key}"
             )
             buf = writer.buffer
-            await broadcast(None, buf, root=root, group_name=group_name)
+            await broadcast(None, buf, root=group_root_rank, group_name=group_name)
             logger.debug(
                 f"Broadcast successfully!! rank: {r}, data key: {root_data_key}"
             )
