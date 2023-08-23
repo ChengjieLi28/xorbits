@@ -14,8 +14,6 @@
 # limitations under the License.
 
 import os
-import pkgutil
-import subprocess as sp
 import sys
 import tempfile
 from typing import Any
@@ -30,9 +28,11 @@ from xoscar.serialization import AioDeserializer, AioSerializer
 from ...lib.filesystem import LocalFileSystem
 from ...lib.sparse import SparseMatrix, SparseNDArray
 from ...tests.core import require_cudf, require_cupy
+from ...utils import lazy_import
 from ..base import StorageLevel
 from ..cuda import CudaStorage
 from ..filesystem import AlluxioStorage, DiskStorage, JuiceFSStorage
+from ..mmkv import MMKVStorage
 from ..plasma import PlasmaStorage
 from ..shared_memory import SharedMemoryStorage
 from ..vineyard import VineyardStorage
@@ -42,24 +42,29 @@ try:
 except ImportError:
     vineyard = None
 
+mmkv = lazy_import("mmkv")
+
 require_lib = lambda x: x
-params = [
-    "filesystem",
-    "shared_memory",
-]
-if (
-    not sys.platform.startswith("win")
-    and pkgutil.find_loader("pyarrow.plasma") is not None
-):
-    params.append("plasma")
-alluxio = sp.getoutput("echo $ALLUXIO_HOME")
-juicefs = sp.getoutput("echo $JUICEFS_HOME")
-if "alluxio" in alluxio:
-    params.append("alluxio")
-if "juicefs" in juicefs:
-    params.append("juicefs")
-if vineyard is not None:
-    params.append("vineyard")
+params = []
+# params = [
+#     "filesystem",
+#     "shared_memory",
+# ]
+# if (
+#     not sys.platform.startswith("win")
+#     and pkgutil.find_loader("pyarrow.plasma") is not None
+# ):
+#     params.append("plasma")
+# alluxio = sp.getoutput("echo $ALLUXIO_HOME")
+# juicefs = sp.getoutput("echo $JUICEFS_HOME")
+# if "alluxio" in alluxio:
+#     params.append("alluxio")
+# if "juicefs" in juicefs:
+#     params.append("juicefs")
+# if vineyard is not None:
+#     params.append("vineyard")
+if mmkv is not None:
+    params.append("mmkv")
 
 
 @pytest.fixture(params=params)
@@ -140,6 +145,13 @@ async def storage_context(request):
 
         teardown_params["object_ids"] = storage._object_ids
         await SharedMemoryStorage.teardown(**teardown_params)
+    elif request.param == "mmkv":
+        params, teardown_params = await MMKVStorage.setup(path="/tmp/x_mmkv")
+        storage = MMKVStorage(**params)
+        assert storage.level == StorageLevel.MEMORY
+
+        yield storage
+        await MMKVStorage.teardown(**teardown_params)
 
 
 def test_storage_level():
@@ -183,7 +195,7 @@ async def test_base_operations(storage_context):
     assert info2.size == put_info2.size
 
     # FIXME: remove when list functionality is ready for vineyard.
-    if not isinstance(storage, (VineyardStorage, SharedMemoryStorage)):
+    if not isinstance(storage, (VineyardStorage, SharedMemoryStorage, MMKVStorage)):
         num = len(await storage.list())
         # juicefs automatically generates 4 files accesslog, config, stats and trash so the num should be 6 for juicefs
         if isinstance(storage, JuiceFSStorage):

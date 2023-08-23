@@ -1,4 +1,8 @@
 "@inherits": '@default'
+storage:
+  backends: [mmkv]
+  mmkv:
+    path: /tmp/x_mmkv
 task:
   default_config:
       reserved_finish_tasks: 0

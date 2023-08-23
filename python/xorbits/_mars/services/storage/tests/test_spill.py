@@ -97,7 +97,7 @@ async def create_actors(actor_pool):
 
 @pytest.fixture(autouse=True)
 async def skip_wihtout_plasma():
-    if pyarrow.__version__ >= "12.0.0":
+    if pyarrow.__version__ < "12.0.0":
         pytest.skip("Pyarrow.Plasma is deprecated since v12.0.0")
 
 

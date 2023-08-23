@@ -1,3 +1,5 @@
 "@inherits": base_config.yml
 storage:
-  backends: [shared_memory]
+  backends: [ mmkv ]
+  mmkv:
+    path: /new_data2/lichengjie/mmkv
